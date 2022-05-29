@@ -1,0 +1,65 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+library(tidyverse)
+house <- read.csv("/Users/atticusw/Desktop/pton-market-data.csv")
+
+# Tidying up
+house <- house %>% 
+  mutate(Price = strtoi(str_replace_all(str_sub(Sold.Price, 2, -4), ",", ""))) %>%
+  rename(nbhd = Neighborhood, bed = Bed.Rooms, fullBath = Full.Baths, halfBath = Half.Baths, style = Style, age = Year.Built) %>%
+  rename(lotSize = Lot.Size, lastPrice = Last.Price, originalPrice = Original.Price, soldPrice = Price) %>%
+  select(- Sold.Price) %>%
+  rename(marketDays = Days.on.Market) %>%
+  separate(col = Sold.Date, into = c("monthSold", "daySold", "yearSold"), sep = "/") %>%
+  mutate(yearSold = strtoi(yearSold) + 2000) %>%
+  mutate(daySold = strtoi(daySold), monthSold = strtoi(monthSold)) %>%
+  mutate(age = yearSold - strtoi(age)) %>%
+  select(- Property.Marketing.Period) %>%
+  mutate(originalPrice = strtoi(str_replace_all(str_sub(originalPrice, 2, -4), ",", ""))) %>%
+  mutate(lastPrice = strtoi(str_replace_all(str_sub(lastPrice, 2, -4), ",", ""))) %>%
+  select(- X) %>%
+  mutate(lotSize = as.double(lotSize)) %>%
+  select(- Address) %>%
+  mutate(marketDays = strtoi(marketDays))
+```
+
+Response variable: soldPrice, (originalPrice)
+
+Predictors: nbhd (neighborhood), bed, fullBath, halfBath, style, age, (originalPrice), (lastPrice), marketDays, yearSold, daySold, monthSold
+
+Regression methods we will use: 
+- full linear model (lm)
+- subset selection (sub)
+- ridge (ridge)
+- lasso (lasso)
+- principal components (pcr)
+
+
+```{r}
+# some final tidying
+
+house <- house %>%
+  select(- lotSize)  #too many NAs
+  
+house <- house %>%
+  mutate(nbhd = replace(nbhd, nbhd == "Battelfield Area", "Battlefield Area"), nbhd = replace(nbhd, nbhd == "princeton Ridge", "Princeton Ridge"), nbhd = replace(nbhd, nbhd == "LIttlebrook", "Littlebrook"), nbhd = replace(nbhd, nbhd == "griggs Farm", "Griggs Farm"), nbhd = replace(nbhd, nbhd == "PrettyBrook Area", "Pretty Brook Area"), nbhd = replace(nbhd, nbhd == "Palmer Sq", "Palmer Square"), nbhd = replace(nbhd, nbhd == "Institute", "Institute Area"), nbhd = replace(nbhd, nbhd == "Rriverside", "Riverside"), nbhd = replace(nbhd, nbhd == "Rriverside", "Riverside"))  #fix area names
+  
+house <- house %>%
+  filter(! nbhd %in% c("Edgerstoune", "Northridge", "Rushbrook", "Russell Estates", "The Preserve", "Governors Lane", "Princeton Borough", "Preserve", "Queenston")) # delete areas with at most 3 houses
+
+house <- house %>%
+  filter(! style %in% badStyles$style) # delete styles with at most 3 houses
+```
+
+```{r}
+
+```
+
+
+
+
+
