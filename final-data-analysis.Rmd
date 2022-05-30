@@ -50,7 +50,7 @@ Regression methods we will use:
 - ridge (ridge)
 - lasso (lasso)
 - elastic net (ela)
-- principal components (pcr)
+- principal components regression (pcr)
 
 
 ```{r}
@@ -65,7 +65,7 @@ badStyles <- house %>%
 house <- house %>%
   select(- lotSize) %>%     #too many NAs
   select(- originalPrice) %>%
-  select(- lastPrice) %>%  #we omit these two predictors because they are too similar to the response variable 
+  select(- lastPrice) %>%  #we omit these two predictors because they are obviously way too similar to the response variable
   mutate(nbhd = replace(nbhd, nbhd == "Battelfield Area", "Battlefield Area"), nbhd = replace(nbhd, nbhd == "princeton Ridge", "Princeton Ridge"), nbhd = replace(nbhd, nbhd == "LIttlebrook", "Littlebrook"), nbhd = replace(nbhd, nbhd == "griggs Farm", "Griggs Farm"), nbhd = replace(nbhd, nbhd == "PrettyBrook Area", "Pretty Brook Area"), nbhd = replace(nbhd, nbhd == "Palmer Sq", "Palmer Square"), nbhd = replace(nbhd, nbhd == "Institute", "Institute Area"), nbhd = replace(nbhd, nbhd == "Rriverside", "Riverside"), nbhd = replace(nbhd, nbhd == "Rriverside", "Riverside"), nbhd = replace(nbhd, nbhd == "Carnegie Lake", "Carnegie Lake Area"), nbhd = replace(nbhd, nbhd == "Town", "Township")) %>%     #fix area names
   filter(! nbhd %in% c("Edgerstoune", "Northridge", "Rushbrook", "Russell Estates", "The Preserve", "Governors Lane", "Princeton Borough", "Preserve", "Queenston")) %>%  #delete areas with few houses
   filter(! style %in% badStyles$style) %>%  #delete styles with at most 3 houses
@@ -109,9 +109,9 @@ evalMetrics <- function(model, df, predictions, target){
 #performance prints two numbers: the first one average R-squared, the second one average RMSE (standard deviation of the ten RMS)
 
 performance <- function(df, modelName) {
-  pf <- data.frame(modelName(houseSplit, 0))
+  pf <- data.frame(modelName(df, 0))
   for (i in 1:9) {
-    pf <- cbind(pf, modelName(houseSplit, i))
+    pf <- cbind(pf, modelName(df, i))
   }
   pf <- t(pf)
   print(pf)
@@ -152,6 +152,8 @@ backwardModel <- function(df, testSet) {
 performance(houseSplit, linearModel)
 performance(houseSplit, forwardModel)
 performance(houseSplit, backwardModel)
+
+#R-Squared acceptable, but there is a large variance
 ```
 
 ```{r}
@@ -163,7 +165,81 @@ performance(houseSplit, backwardModel)
 library(glmnet)
 library(caret)
 
-dummies <- dummyVars(soldPrice ~ ., data = houseSplit[,colnames(houseNorm)])
+dummy <- as.data.frame(predict(dummyVars(soldPrice ~ ., data = house), newdata = house))
+dummyNorm <- as.data.frame(scale(dummy))
+dummySplit <- dummyNorm
+dummySplit$id = houseSplit$id
+#these don't have the response variable as a column!
+dummySplitWithResponse <- dummySplit
+dummySplitWithResponse$soldPrice = house$soldPrice
+
+evalResults <- function(true, predicted, df) {
+  SSE <- sum((predicted - true)^2)
+  SST <- sum((true - mean(true))^2)
+  R_square <- round(1 - SSE / SST, 3)
+  RMSE = round(sqrt(SSE/nrow(df)), 3)
+  return(c(R_square, RMSE))
+}
+
+ridgeModel <- function(df, testSet) {
+  x = as.matrix(select(filter(dummySplit, id != testSet), -id))
+  xTest = as.matrix(select(filter(dummySplit, id == testSet), -id))
+  y = filter(df, id != testSet)$soldPrice
+  yTest = filter(df, id == testSet)$soldPrice
+  cvModel <- cv.glmnet(x, y, alpha = 0)
+  bestLambda <- cvModel$lambda.min
+  bestModel <- glmnet(x, y, alpha = 0, lambda = bestLambda)
+  predictions <- predict(bestModel, newx = xTest)
+  evalResults(yTest, predictions, filter(df, id == testSet))
+}
+
+lassoModel <- function(df, testSet) {
+  x = as.matrix(select(filter(dummySplit, id != testSet), -id))
+  xTest = as.matrix(select(filter(dummySplit, id == testSet), -id))
+  y = filter(df, id != testSet)$soldPrice
+  yTest = filter(df, id == testSet)$soldPrice
+  cvModel <- cv.glmnet(x, y, alpha = 1)
+  bestLambda <- cvModel$lambda.min
+  bestModel <- glmnet(x, y, alpha = 1, lambda = bestLambda)
+  predictions <- predict(bestModel, newx = xTest)
+  evalResults(yTest, predictions, filter(df, id == testSet))
+}
+
+#for the elastic net approach, we need to tune the parameters alpha and lambda
+elasticNetModel <- function(df, testSet) {
+  trCont <- trainControl(method = "repeatedcv", number = 10, repeats = 3, search = "random", verboseIter = FALSE)
+  elasticBest <- train(soldPrice ~ ., data = select(filter(df, id != testSet), -id), method = "glmnet", preProcess = c("center", "scale"), tuneLength = 10, trControl = trCont)
+  xTest = as.matrix(select(filter(dummySplit, id == testSet), -id))
+  yTest = filter(houseSplit, id == testSet)$soldPrice
+  predictions <- predict(elasticBest, xTest)
+  evalResults(yTest, predictions, filter(houseSplit, id == testSet))
+}
+
+performance(houseSplit, ridgeModel)
+#the ridge model has roughly the same RMSE, but slightly lower R2
+performance(houseSplit, lassoModel)
+#lasso has slightly lower RMSE, and a slightly higher R2 compared to ridge, but still lower than the linear model
+performance(dummySplitWithResponse, elasticNetModel)
+#elastic net has an even lower RMSE and a similar R2 compared with the previous two. Warning: this takes a longer time to run.
+```
+
+
+```{r}
+#finally we try principal component regression (PCR)
+#this is worth trying because many predictors are already correlated
+
+# install.packages("pls")
+library(pls)
+
+PCRModel <- function(df, testSet) {
+  housePCR <- pcr(soldPrice ~ ., data = select(filter(df, id != testSet), -id), scale = TRUE, validation = "CV", ncomp = 30)
+  predictions <- predict(housePCR, select(filter(df, id == testSet), -id), ncomp = 30)
+  yTest <- filter(df, id == testSet)$soldPrice
+  return(c(round(mean((predictions - yTest)^2)/mean((yTest - mean(yTest))^2),3), round(sqrt(sum((predictions - yTest)^2)/length(predictions)), 3)))
+}
+
+performance(dummySplitWithResponse, PCRModel)
+#This one has a higher R squared, but as a trade-off it also has high variance
 ```
 
 
