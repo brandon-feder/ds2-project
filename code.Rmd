@@ -245,4 +245,55 @@ models <- data.frame(lm = performance(houseSplit, linearModel),
                      ela = performance(dummySplitWithResponse, elasticNetModel), 
                      pcr = performance(dummySplitWithResponse, PCRModel))
 models
+
+#make plots for lasso and pcr, our two final models
+
+lassoPlot <- function(df, testSet, lambda) {
+  x = as.matrix(select(filter(dummySplit, id != testSet), -id))
+  xTest = as.matrix(select(filter(dummySplit, id == testSet), -id))
+  y = filter(df, id != testSet)$soldPrice
+  yTest = filter(df, id == testSet)$soldPrice
+  model <- glmnet(x, y, alpha = 1, lambda = lambda)
+  predictions <- predict(model, newx = xTest)
+  evalResults(yTest, predictions, filter(df, id == testSet))
+}
+
+PCRPlot <- function(df, testSet, ncomp) {
+  housePCR <- pcr(soldPrice ~ ., data = select(filter(df, id != testSet), -id), scale = TRUE, validation = "CV", ncomp = ncomp)
+  predictions <- predict(housePCR, select(filter(df, id == testSet), -id), ncomp = ncomp)
+  yTest <- filter(df, id == testSet)$soldPrice
+  return(c(ncomp, round(mean((predictions - yTest)^2)/mean((yTest - mean(yTest))^2),3), round(sqrt(sum((predictions - yTest)^2)/length(predictions)), 3)))
+}
+
+performancePlot <- function(df, modelName, parameter) {
+  pf <- data.frame(modelName(df, 0, parameter))
+  for (i in 1:9) {
+    pf <- cbind(pf, modelName(df, i, parameter))
+  }
+  pf <- t(pf)
+  return(list(parameter, mean(pf[,1]), mean(pf[,2])))
+}
+
+lassoPerformance <- data.frame(lambda = numeric(), R2 = numeric(), RMSE = numeric())
+for (i in seq(-2, 4, by = 0.2)) {
+  lassoPerformance[5*(i+2),] <- performancePlot(houseSplit, lassoPlot, 10^i)
+}
+as.data.frame(lassoPerformance) %>%
+  ggplot(aes(x = log10(lambda), y = R2)) +
+  geom_line()
+as.data.frame(lassoPerformance) %>%
+  ggplot(aes(x = log10(lambda), y = RMSE)) +
+  geom_line()
+
+PCRPerformance <- data.frame(ncomp = numeric(), R2 = numeric(), RMSE = numeric())
+for (i in seq(1, 61)) {
+  PCRPerformance[i,] <- performancePlot(dummySplitWithResponse, PCRPlot, i)
+}
+as.data.frame(PCRPerformance) %>%
+  ggplot(aes(x = ncomp, y = R2)) +
+  geom_line()
+as.data.frame(PCRPerformance) %>%
+  ggplot(aes(x = ncomp, y = RMSE)) +
+  geom_line()
 ```
+
