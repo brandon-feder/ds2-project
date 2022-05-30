@@ -7,7 +7,7 @@ author: Brandon Feder, Atticus Wang
 date: May 30, 2022
 ---
 
-# Introduction
+# 1. Introduction
 
 ## Research question and hypothesis
 
@@ -28,9 +28,105 @@ Based off our own experience, we predict that neighborhood/address and the year 
 
 Beatrice Bloom, a Princeton Residential Specialist, provides many great resources about the Princeton housing market including a table of houses sold in Princeton since 2011. This data can be found [here](https://www.realestate-princeton.com/market-analysis/princeton-pending/). We intend to use this data to answer our question. The data is stored in `./data/pton-market-data.csv` in the Github repo.
 
-## Exploratory data analysis
+For a simple exploratory data analysis, we used `group_by` and `summarize` to find the top-10 styles and neighborhoods with the highest price. The results are shown in Table 1.
 
-Use `group_by` and `summarize` to find the top-10 styles and neighborhoods with the highest price:
+```{r, echo = FALSE, warning = FALSE, message = FALSE}
+library(tidyverse)
+library(glmnet)
+library(caret)
+house <- read.csv("./data/pton-market-data.csv")
+
+#Tidying up
+
+house <- house %>% 
+  mutate(Price = strtoi(str_replace_all(str_sub(Sold.Price, 2, -4), ",", ""))) %>%
+  rename(nbhd = Neighborhood, 
+         bed = Bed.Rooms, 
+         fullBath = Full.Baths, 
+         halfBath = Half.Baths, 
+         style = Style, 
+         age = Year.Built) %>%
+  rename(lotSize = Lot.Size, 
+         lastPrice = Last.Price, 
+         originalPrice = Original.Price, 
+         soldPrice = Price) %>%
+  select(- Sold.Price) %>%
+  rename(marketDays = Days.on.Market) %>%
+  separate(col = Sold.Date, into = c("monthSold", "daySold", "yearSold"), sep = "/") %>%
+  mutate(yearSold = strtoi(yearSold) + 2000) %>%
+  mutate(daySold = strtoi(daySold), monthSold = strtoi(monthSold)) %>%
+  mutate(age = yearSold - strtoi(age)) %>%
+  select(- Property.Marketing.Period) %>%
+  mutate(originalPrice = strtoi(str_replace_all(str_sub(originalPrice, 2, -4), ",", ""))) %>%
+  mutate(lastPrice = strtoi(str_replace_all(str_sub(lastPrice, 2, -4), ",", ""))) %>%
+  select(- X) %>%
+  mutate(lotSize = as.double(lotSize)) %>%
+  select(- Address) %>%
+  mutate(marketDays = strtoi(marketDays))
+
+#some final tidying
+
+badStyles <- house %>% 
+  group_by(style) %>%
+  summarise(count = n()) %>%
+  arrange(count) %>%
+  head(43)
+
+house <- house %>%
+  select(- lotSize) %>%     #too many NAs
+  select(- originalPrice) %>%
+  select(- lastPrice) %>%  #omit these two predictors because they are obviously way too similar to the response variable
+  mutate(nbhd = replace(nbhd, nbhd == "Battelfield Area", "Battlefield Area"), 
+         nbhd = replace(nbhd, nbhd == "princeton Ridge", "Princeton Ridge"), 
+         nbhd = replace(nbhd, nbhd == "LIttlebrook", "Littlebrook"), 
+         nbhd = replace(nbhd, nbhd == "griggs Farm", "Griggs Farm"), 
+         nbhd = replace(nbhd, nbhd == "PrettyBrook Area", "Pretty Brook Area"), 
+         nbhd = replace(nbhd, nbhd == "Palmer Sq", "Palmer Square"), 
+         nbhd = replace(nbhd, nbhd == "Institute", "Institute Area"), 
+         nbhd = replace(nbhd, nbhd == "Rriverside", "Riverside"), 
+         nbhd = replace(nbhd, nbhd == "Rriverside", "Riverside"), 
+         nbhd = replace(nbhd, nbhd == "Carnegie Lake", "Carnegie Lake Area"), 
+         nbhd = replace(nbhd, nbhd == "Town", "Township")) %>%     #fix area names
+  filter(! nbhd %in% c("Edgerstoune", "Northridge", "Rushbrook", "Russell Estates", 
+                       "The Preserve", "Governors Lane", "Princeton Borough", 
+                       "Preserve", "Queenston")) %>%  #delete areas with few houses
+  filter(! style %in% badStyles$style) %>%  #delete styles with at most 3 houses
+  mutate(style = replace(style, style == "Bi-level", "Bi-Level"), 
+         style = replace(style, style == "End Unit", "End-Unit"), 
+         style = replace(style, style == "Townhouse", "Townhome"))  #fix style names
+
+knitr::kable(list(house %>% 
+  group_by(style) %>%
+  summarise(meanPrice = mean(soldPrice)) %>%
+  arrange(desc(meanPrice)) %>%
+  head(10),
+  house %>% 
+  group_by(nbhd) %>%
+  summarise(meanPrice = mean(soldPrice)) %>%
+  arrange(desc(meanPrice)) %>%
+  head(10)), caption = "Top ten styles and neighborhoods with highest meanPrice")
+```
+
+
+# 2. Regression Analysis
+
+## Description of models
+
+The final model we adopted was Lasso (short for "Least Absolute Shrinkage and Selection Operator"), a generalization of usual linear regression. We chose this model because among all models we tried (see Table 2), Lasso has the lowest variance of errors (an RMSE of roughly 0.453 million dollars), and a decent R-squared value of 0.522.
+
+Lasso tries to enhance prediction accuracy and model interpretability by performing both variable selection (selecting which predictors to take into account) and shrinkage (shrinking coefficients of less important predictors). For usual linear models, we often try to minimize the sum of squares $\sum_{i=1}^N (y_i - \beta_0 - \sum_{j=1}^p x_{i,j}\beta_j)^2$. For Lasso, we impose a penalty for more complex models: what we minimize is the sum $\sum_{i=1}^N (y_i - \beta_0 - \sum_{j=1}^p x_{i,j}\beta_j)^2 + \lambda \sum_{j=1}^p |\beta_j|$. Here, $\lambda \ge 0$ is a parameter that we can tune to best fit our scenario.
+
+As usual, Lasso assumes that the response variable $y$ follows a linear relation with the predictor variables $y = X\beta + \epsilon$, where $\epsilon$ is Normally distributed with mean 0.
+
+```{r, echo = FALSE, warning = FALSE, message = FALSE} 
+modelsPrint <- data.frame(R2 = c(0.5448, 0.5449, 0.5449, 0.517, 0.5227, 0.5192, 0.5996), RMSE = c(454579.0698, 454880.4127, 454880.4127, 455475.355, 452814.7395, 454296.0325, 507587.9640))
+row.names(modelsPrint) <- c("full lm", "forward", "backward", "ridge", "lasso", "elastic net", "pcr")
+knitr::kable(modelsPrint, caption = "Performance of all models we tried")
+```
+
+## Model output
+
+We calculated the average R-squared and RMSE values using tenfold cross validation. The following graphs plot R-squared and RMSE values against lambda, the parameter in the Lasso model.
 
 ```{r, echo = FALSE, warning = FALSE, message = FALSE}
 library(tidyverse)
@@ -95,22 +191,210 @@ house <- house %>%
          style = replace(style, style == "End Unit", "End-Unit"), 
          style = replace(style, style == "Townhouse", "Townhome"))  #fix style names
 
-knitr::kable(list(house %>% 
-  group_by(style) %>%
-  summarise(meanSoldPrice = mean(soldPrice)) %>%
-  arrange(meanSoldPrice) %>%
-  head(10),
-  house %>% 
-  group_by(nbhd) %>%
-  summarise(meanSoldPrice = mean(soldPrice)) %>%
-  arrange(meanSoldPrice) %>%
-  head(10)), caption = "Top ten styles and neighborhoods with highest meanSoldPrice")
+house <- na.omit(house)
+
+
+
+#normalize numerical data
+
+houseNorm <- house %>%
+  mutate_at(c("bed", "fullBath", "halfBath", "age", "monthSold", 
+              "daySold", "yearSold", "marketDays"), ~(scale(.) %>% as.vector))
+
+#divide data into 10 parts for cross-validation
+
+set.seed(42)
+houseSplit <- houseNorm
+houseSplit$id <- sample(0:9, size = nrow(houseSplit), replace = TRUE)
+# houseSplit %>%
+#  group_by(id) %>%
+#  summarize(count = n())
+
+#define evaluation metrics: returns R-squared and RMS error. 
+
+evalMetrics <- function(model, df, predictions, target){
+    resids = df[,target] - predictions
+    resids2 = resids**2
+    N = length(predictions)
+    r2 = round(summary(model)$r.squared, 3)
+    adjR2 = round(summary(model)$adj.r.squared, 3)
+    rmse = round(sqrt(sum(resids2)/N), 3)
+    return(c(adjR2, rmse))
+}
+
+evalResults <- function(true, predicted, df) {
+  SSE <- sum((predicted - true)^2)
+  SST <- sum((true - mean(true))^2)
+  R_square <- round(1 - SSE / SST, 3)
+  RMSE = round(sqrt(SSE/nrow(df)), 3)
+  return(c(R_square, RMSE))
+}
+
+#performance prints two numbers: 
+#the first one is the average R-squared across all 10 cross-validations
+#the second one is the average RMSE (standard deviation of the ten RMS)
+
+performance <- function(df, modelName) {
+  pf <- data.frame(modelName(df, 0))
+  for (i in 1:9) {
+    pf <- cbind(pf, modelName(df, i))
+  }
+  pf <- t(pf)
+  print(c(mean(pf[,1]), mean(pf[,2])))
+  return(c(mean(pf[,1]), mean(pf[,2])))
+}
+
+
+
+#now we define the regression models!
+
+#linear regression model using all predictors
+
+linearModel <- function(df, testSet) {
+  lr <- lm(soldPrice ~ ., data = select(filter(df, id != testSet), -id))
+  summary(lr)
+  predictions <- predict(lr, newdata = select(filter(df, id == testSet), -id))
+  evalMetrics(lr, select(filter(df, id == testSet), -id), predictions, target = "soldPrice")
+}
+
+#linear regression with a subset of the predictors
+#we use the step function for this
+
+forwardModel <- function(df, testSet) {
+  fitNone <- lm(soldPrice ~ 1 , data = select(filter(df, id != testSet), -id))
+  forward <- step(fitNone, direction = "forward", trace = 0, 
+                  scope = formula(lm(soldPrice ~ ., data = select(filter(df, id != testSet), -id))))
+  predForward <- predict(forward, newdata = select(filter(df, id == testSet), -id))
+  evalMetrics(forward, select(filter(df, id == testSet), -id), predForward, target = "soldPrice")
+}
+
+backwardModel <- function(df, testSet) {
+  fitAll <- lm(soldPrice ~ ., data = select(filter(df, id != testSet), -id))
+  backward <- step(fitAll, direction = "backward", trace = 0)
+  predBackward <- predict(backward, newdata = select(filter(df, id == testSet), -id))
+  evalMetrics(backward, select(filter(df, id == testSet), -id), predBackward, target = "soldPrice")
+}
+
+#performance(houseSplit, linearModel)
+#performance(houseSplit, forwardModel)
+#performance(houseSplit, backwardModel)
+#all three models behave fairly similarly: R-Squared is acceptable, but there is a large variance
+
+#we will use the glmnet package to build regularized regression models
+#these include ridge, lasso, and elastic net
+
+# install.packages("glmnet")
+# install.packages("caret")
+library(glmnet)
+library(caret)
+
+dummy <- as.data.frame(predict(dummyVars(soldPrice ~ ., data = house), newdata = house))
+dummyNorm <- as.data.frame(scale(dummy))
+dummySplit <- dummyNorm
+dummySplit$id = houseSplit$id
+#these don't have the response variable as a column!
+dummySplitWithResponse <- dummySplit
+dummySplitWithResponse$soldPrice = house$soldPrice
+
+ridgeModel <- function(df, testSet) {
+  x = as.matrix(select(filter(dummySplit, id != testSet), -id))
+  xTest = as.matrix(select(filter(dummySplit, id == testSet), -id))
+  y = filter(df, id != testSet)$soldPrice
+  yTest = filter(df, id == testSet)$soldPrice
+  cvModel <- cv.glmnet(x, y, alpha = 0)
+  bestLambda <- cvModel$lambda.min
+  bestModel <- glmnet(x, y, alpha = 0, lambda = bestLambda)
+  predictions <- predict(bestModel, newx = xTest)
+  evalResults(yTest, predictions, filter(df, id == testSet))
+}
+
+lassoModel <- function(df, testSet) {
+  x = as.matrix(select(filter(dummySplit, id != testSet), -id))
+  xTest = as.matrix(select(filter(dummySplit, id == testSet), -id))
+  y = filter(df, id != testSet)$soldPrice
+  yTest = filter(df, id == testSet)$soldPrice
+  cvModel <- cv.glmnet(x, y, alpha = 1)
+  bestLambda <- cvModel$lambda.min
+  bestModel <- glmnet(x, y, alpha = 1, lambda = bestLambda)
+  predictions <- predict(bestModel, newx = xTest)
+  evalResults(yTest, predictions, filter(df, id == testSet))
+}
+
+#for the elastic net approach, we need to tune the parameters alpha and lambda
+elasticNetModel <- function(df, testSet) {
+  trCont <- trainControl(method = "repeatedcv", number = 10, repeats = 3, search = "random", verboseIter = FALSE)
+  elasticBest <- train(soldPrice ~ ., data = select(filter(df, id != testSet), -id), method = "glmnet",
+                       preProcess = c("center", "scale"), tuneLength = 10, trControl = trCont)
+  xTest = as.matrix(select(filter(dummySplit, id == testSet), -id))
+  yTest = filter(houseSplit, id == testSet)$soldPrice
+  predictions <- predict(elasticBest, xTest)
+  evalResults(yTest, predictions, filter(houseSplit, id == testSet))
+}
+
+#performance(houseSplit, ridgeModel)
+#the ridge model has roughly the same RMSE, but slightly lower R2
+#performance(houseSplit, lassoModel)
+#lasso has slightly lower RMSE, and a slightly higher R2 compared to ridge, but still lower than the linear model
+#performance(dummySplitWithResponse, elasticNetModel)
+#elastic net is between ridge and lasso in terms of both R2 and variance
+
+#finally we try principal component regression (PCR)
+#this is worth trying because many predictors are already correlated
+#we can fine-tune the parameter ncomp, which has been set to 30 (half of the total number of predictors)
+
+# install.packages("pls")
+library(pls)
+
+PCRModel <- function(df, testSet) {
+  housePCR <- pcr(soldPrice ~ ., data = select(filter(df, id != testSet), -id), scale = TRUE, validation = "CV", ncomp = 30)
+  predictions <- predict(housePCR, select(filter(df, id == testSet), -id), ncomp = 30)
+  yTest <- filter(df, id == testSet)$soldPrice
+  return(c(round(mean((predictions - yTest)^2)/mean((yTest - mean(yTest))^2),3), round(sqrt(sum((predictions - yTest)^2)/length(predictions)), 3)))
+}
+
+lassoPlot <- function(df, testSet, lambda) {
+  x = as.matrix(select(filter(dummySplit, id != testSet), -id))
+  xTest = as.matrix(select(filter(dummySplit, id == testSet), -id))
+  y = filter(df, id != testSet)$soldPrice
+  yTest = filter(df, id == testSet)$soldPrice
+  model <- glmnet(x, y, alpha = 1, lambda = lambda)
+  predictions <- predict(model, newx = xTest)
+  evalResults(yTest, predictions, filter(df, id == testSet))
+}
+
+performancePlot <- function(df, modelName, parameter) {
+  pf <- data.frame(modelName(df, 0, parameter))
+  for (i in 1:9) {
+    pf <- cbind(pf, modelName(df, i, parameter))
+  }
+  pf <- t(pf)
+  return(list(parameter, mean(pf[,1]), mean(pf[,2])))
+}
+
+lassoPerformance <- data.frame(lambda = numeric(), R2 = numeric(), RMSE = numeric())
+for (i in seq(-2, 4, by = 0.2)) {
+  lassoPerformance[5*(i+2),] <- performancePlot(houseSplit, lassoPlot, 10^i)
+}
+
+lassoR2 <- as.data.frame(lassoPerformance) %>%
+  ggplot(aes(x = log10(lambda), y = R2)) +
+  geom_line()
+lassoRMSE <- as.data.frame(lassoPerformance) %>%
+  ggplot(aes(x = log10(lambda), y = RMSE)) +
+  geom_line()
 ```
 
+```{r show_figure, fig.width = 2.5, fig.height = 2.5, warning = FALSE, echo = FALSE}
+lassoR2
+lassoRMSE
+```
 
-# Regression Analysis
+As we can see, the best lambda occurs roughly at $10^{3.8} \approx 6309$. Using this lambda, we obtained the R-squared and RMSE values for Lasso in Table 2.
 
-Our final models are Lasso and PCR. Lasso has the lowest variance, while PCR has the highest R2.
+\newpage
+
+## Interprtation of coefficients
+
 
 # Discussion and Limitations
 
