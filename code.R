@@ -1,9 +1,8 @@
 library(tidyverse)
-
-#read dataset
-house <- read.csv("/Users/atticusw/Desktop/pton-market-data.csv")
+house <- read.csv("./data/pton-market-data.csv")
 
 #Tidying up
+
 house <- house %>% 
   mutate(Price = strtoi(str_replace_all(str_sub(Sold.Price, 2, -4), ",", ""))) %>%
   rename(nbhd = Neighborhood, 
@@ -31,6 +30,7 @@ house <- house %>%
   mutate(marketDays = strtoi(marketDays))
 
 #some final tidying
+
 badStyles <- house %>% 
   group_by(style) %>%
   summarise(count = n()) %>%
@@ -62,12 +62,16 @@ house <- house %>%
 
 house <- na.omit(house)
 
+
+
 #normalize numerical data
+
 houseNorm <- house %>%
   mutate_at(c("bed", "fullBath", "halfBath", "age", "monthSold", 
               "daySold", "yearSold", "marketDays"), ~(scale(.) %>% as.vector))
 
 #divide data into 10 parts for cross-validation
+
 set.seed(42)
 houseSplit <- houseNorm
 houseSplit$id <- sample(0:9, size = nrow(houseSplit), replace = TRUE)
@@ -76,6 +80,7 @@ houseSplit$id <- sample(0:9, size = nrow(houseSplit), replace = TRUE)
 #  summarize(count = n())
 
 #define evaluation metrics: returns R-squared and RMS error. 
+
 evalMetrics <- function(model, df, predictions, target){
   resids = df[,target] - predictions
   resids2 = resids**2
@@ -97,6 +102,7 @@ evalResults <- function(true, predicted, df) {
 #performance prints two numbers: 
 #the first one is the average R-squared across all 10 cross-validations
 #the second one is the average RMSE (standard deviation of the ten RMS)
+
 performance <- function(df, modelName) {
   pf <- data.frame(modelName(df, 0))
   for (i in 1:9) {
@@ -107,9 +113,12 @@ performance <- function(df, modelName) {
   return(c(mean(pf[,1]), mean(pf[,2])))
 }
 
+
+
 #now we define the regression models!
 
 #linear regression model using all predictors
+
 linearModel <- function(df, testSet) {
   lr <- lm(soldPrice ~ ., data = select(filter(df, id != testSet), -id))
   summary(lr)
@@ -119,6 +128,7 @@ linearModel <- function(df, testSet) {
 
 #linear regression with a subset of the predictors
 #we use the step function for this
+
 forwardModel <- function(df, testSet) {
   fitNone <- lm(soldPrice ~ 1 , data = select(filter(df, id != testSet), -id))
   forward <- step(fitNone, direction = "forward", trace = 0, 
@@ -214,6 +224,8 @@ PCRModel <- function(df, testSet) {
 #performance(dummySplitWithResponse, PCRModel)
 #This one has a higher R squared, but as a trade-off it also has higher variance
 
+
+
 #compare the models
 
 models <- data.frame(lm = performance(houseSplit, linearModel), 
@@ -224,3 +236,53 @@ models <- data.frame(lm = performance(houseSplit, linearModel),
                      ela = performance(dummySplitWithResponse, elasticNetModel), 
                      pcr = performance(dummySplitWithResponse, PCRModel))
 models
+
+#make plots for lasso and pcr, our two final models
+
+lassoPlot <- function(df, testSet, lambda) {
+  x = as.matrix(select(filter(dummySplit, id != testSet), -id))
+  xTest = as.matrix(select(filter(dummySplit, id == testSet), -id))
+  y = filter(df, id != testSet)$soldPrice
+  yTest = filter(df, id == testSet)$soldPrice
+  model <- glmnet(x, y, alpha = 1, lambda = lambda)
+  predictions <- predict(model, newx = xTest)
+  evalResults(yTest, predictions, filter(df, id == testSet))
+}
+
+PCRPlot <- function(df, testSet, ncomp) {
+  housePCR <- pcr(soldPrice ~ ., data = select(filter(df, id != testSet), -id), scale = TRUE, validation = "CV", ncomp = ncomp)
+  predictions <- predict(housePCR, select(filter(df, id == testSet), -id), ncomp = ncomp)
+  yTest <- filter(df, id == testSet)$soldPrice
+  return(c(ncomp, round(mean((predictions - yTest)^2)/mean((yTest - mean(yTest))^2),3), round(sqrt(sum((predictions - yTest)^2)/length(predictions)), 3)))
+}
+
+performancePlot <- function(df, modelName, parameter) {
+  pf <- data.frame(modelName(df, 0, parameter))
+  for (i in 1:9) {
+    pf <- cbind(pf, modelName(df, i, parameter))
+  }
+  pf <- t(pf)
+  return(list(parameter, mean(pf[,1]), mean(pf[,2])))
+}
+
+lassoPerformance <- data.frame(lambda = numeric(), R2 = numeric(), RMSE = numeric())
+for (i in seq(-2, 4, by = 0.2)) {
+  lassoPerformance[5*(i+2),] <- performancePlot(houseSplit, lassoPlot, 10^i)
+}
+as.data.frame(lassoPerformance) %>%
+  ggplot(aes(x = log10(lambda), y = R2)) +
+  geom_line()
+as.data.frame(lassoPerformance) %>%
+  ggplot(aes(x = log10(lambda), y = RMSE)) +
+  geom_line()
+
+PCRPerformance <- data.frame(ncomp = numeric(), R2 = numeric(), RMSE = numeric())
+for (i in seq(1, 61)) {
+  PCRPerformance[i,] <- performancePlot(dummySplitWithResponse, PCRPlot, i)
+}
+as.data.frame(PCRPerformance) %>%
+  ggplot(aes(x = ncomp, y = R2)) +
+  geom_line()
+as.data.frame(PCRPerformance) %>%
+  ggplot(aes(x = ncomp, y = RMSE)) +
+  geom_line()

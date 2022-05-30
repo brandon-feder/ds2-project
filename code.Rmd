@@ -8,7 +8,7 @@ editor_options:
 
 ```{r}
 library(tidyverse)
-house <- read.csv("/Users/atticusw/Desktop/pton-market-data.csv")
+house <- read.csv("./data/pton-market-data.csv")
 
 #Tidying up
 
@@ -70,9 +70,9 @@ house <- house %>%
          style = replace(style, style == "Townhouse", "Townhome"))  #fix style names
 
 house <- na.omit(house)
-```
 
-```{r}
+
+
 #normalize numerical data
 
 houseNorm <- house %>%
@@ -121,9 +121,9 @@ performance <- function(df, modelName) {
   print(c(mean(pf[,1]), mean(pf[,2])))
   return(c(mean(pf[,1]), mean(pf[,2])))
 }
-```
 
-```{r}
+
+
 #now we define the regression models!
 
 #linear regression model using all predictors
@@ -232,9 +232,9 @@ PCRModel <- function(df, testSet) {
 
 #performance(dummySplitWithResponse, PCRModel)
 #This one has a higher R squared, but as a trade-off it also has higher variance
-```
 
-```{r}
+
+
 #compare the models
 
 models <- data.frame(lm = performance(houseSplit, linearModel), 
