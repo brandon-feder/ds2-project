@@ -1,6 +1,9 @@
 ---
 title: "R Notebook"
 output: html_notebook
+editor_options: 
+  markdown: 
+    wrap: 72
 ---
 
 ```{r}
@@ -27,31 +30,6 @@ house <- house %>%
   select(- Address) %>%
   mutate(marketDays = strtoi(marketDays))
 ```
-
----OUR PLAN---
-
-Response variable: soldPrice (price at which the house was sold)
-
-Possible predictors:
-- nbhd (neighborhood)
-- bed (number of bedrooms)
-- fullBath (number of full baths)
-- halfBath (number of half baths)
-- style (style)
-- age (yearSold minus yearBuilt)
-- originalPrice (original price)
-- lastPrice (price at which the house was last sold)
-- marketDays (days the house was on market)
-- yearSold, daySold, monthSold (date at which the house was sold)
-
-Regression methods we will use: 
-- full linear model (lm)
-- subset selection (forward, backward)
-- ridge (ridge)
-- lasso (lasso)
-- elastic net (ela)
-- principal components regression (pcr)
-
 
 ```{r}
 #some final tidying
@@ -92,7 +70,6 @@ houseSplit %>%
   summarize(count = n())
 ```
 
-
 ```{r}
 #define evaluation metrics: returns R-squared and RMS error
 
@@ -118,7 +95,6 @@ performance <- function(df, modelName) {
   return(c(mean(pf[,1]), mean(pf[,2])))
 }
 ```
-
 
 ```{r}
 #now we define the regression models!
@@ -223,7 +199,6 @@ elasticNetModel <- function(df, testSet) {
 #elastic net is between ridge and lasso in terms of both R2 and variance
 ```
 
-
 ```{r}
 #finally we try principal component regression (PCR)
 #this is worth trying because many predictors are already correlated
@@ -242,7 +217,6 @@ PCRModel <- function(df, testSet) {
 #This one has a higher R squared, but as a trade-off it also has high variance
 ```
 
-
 ```{r}
 #compare the models
 
@@ -250,6 +224,3 @@ models <- data.frame(lm = performance(houseSplit, linearModel), forward = perfor
 
 models
 ```
-
-
-
