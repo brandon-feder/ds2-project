@@ -9,11 +9,9 @@ date: May 30, 2022
 
 # Introduction
 
----OUR PLAN---
+## Research question and hypothesis
 
-Response variable: soldPrice (price at which the house was sold)
-
-Possible predictors: 
+Princeton has many diverse houses ranging in size, location, age, and many other factors. With this comes a huge range of house prices. But how do the characteristics of a house determine its price? Our research studies how factors such as the number of bedrooms, location, and the year built affect the price of the house. More precisely, we try to predict `soldPrice`, the price at which a house is sold, using the following possible predictors:
 
 - nbhd (neighborhood) 
 - bed (number of bedrooms) 
@@ -21,19 +19,94 @@ Possible predictors:
 - halfBath (number of half baths) 
 - style (style) 
 - age (yearSold minus yearBuilt) 
-- originalPrice (original price) 
-- lastPrice (price at which the house was last sold) 
 - marketDays (days the house was on market) 
 - yearSold, daySold, monthSold (date at which the house was sold)
 
-Regression methods we will use: 
+Based off our own experience, we predict that neighborhood/address and the year built have a significant impact on the price of the house.
 
-- full linear model (lm) 
-- subset selection (forward, backward) 
-- ridge (ridge) 
-- lasso (lasso) 
-- elastic net (ela) 
-- principal components regression (pcr)
+## Data description
+
+Beatrice Bloom, a Princeton Residential Specialist, provides many great resources about the Princeton housing market including a table of houses sold in Princeton since 2011. This data can be found [here](https://www.realestate-princeton.com/market-analysis/princeton-pending/). We intend to use this data to answer our question. The data is stored in `./data/pton-market-data.csv` in the Github repo.
+
+## Exploratory data analysis
+
+Use `group_by` and `summarize` to find the top-10 styles and neighborhoods with the highest price:
+
+```{r, echo = FALSE, warning = FALSE, message = FALSE}
+library(tidyverse)
+house <- read.csv("./data/pton-market-data.csv")
+
+#Tidying up
+
+house <- house %>% 
+  mutate(Price = strtoi(str_replace_all(str_sub(Sold.Price, 2, -4), ",", ""))) %>%
+  rename(nbhd = Neighborhood, 
+         bed = Bed.Rooms, 
+         fullBath = Full.Baths, 
+         halfBath = Half.Baths, 
+         style = Style, 
+         age = Year.Built) %>%
+  rename(lotSize = Lot.Size, 
+         lastPrice = Last.Price, 
+         originalPrice = Original.Price, 
+         soldPrice = Price) %>%
+  select(- Sold.Price) %>%
+  rename(marketDays = Days.on.Market) %>%
+  separate(col = Sold.Date, into = c("monthSold", "daySold", "yearSold"), sep = "/") %>%
+  mutate(yearSold = strtoi(yearSold) + 2000) %>%
+  mutate(daySold = strtoi(daySold), monthSold = strtoi(monthSold)) %>%
+  mutate(age = yearSold - strtoi(age)) %>%
+  select(- Property.Marketing.Period) %>%
+  mutate(originalPrice = strtoi(str_replace_all(str_sub(originalPrice, 2, -4), ",", ""))) %>%
+  mutate(lastPrice = strtoi(str_replace_all(str_sub(lastPrice, 2, -4), ",", ""))) %>%
+  select(- X) %>%
+  mutate(lotSize = as.double(lotSize)) %>%
+  select(- Address) %>%
+  mutate(marketDays = strtoi(marketDays))
+
+#some final tidying
+
+badStyles <- house %>% 
+  group_by(style) %>%
+  summarise(count = n()) %>%
+  arrange(count) %>%
+  head(43)
+
+house <- house %>%
+  select(- lotSize) %>%     #too many NAs
+  select(- originalPrice) %>%
+  select(- lastPrice) %>%  #omit these two predictors because they are obviously way too similar to the response variable
+  mutate(nbhd = replace(nbhd, nbhd == "Battelfield Area", "Battlefield Area"), 
+         nbhd = replace(nbhd, nbhd == "princeton Ridge", "Princeton Ridge"), 
+         nbhd = replace(nbhd, nbhd == "LIttlebrook", "Littlebrook"), 
+         nbhd = replace(nbhd, nbhd == "griggs Farm", "Griggs Farm"), 
+         nbhd = replace(nbhd, nbhd == "PrettyBrook Area", "Pretty Brook Area"), 
+         nbhd = replace(nbhd, nbhd == "Palmer Sq", "Palmer Square"), 
+         nbhd = replace(nbhd, nbhd == "Institute", "Institute Area"), 
+         nbhd = replace(nbhd, nbhd == "Rriverside", "Riverside"), 
+         nbhd = replace(nbhd, nbhd == "Rriverside", "Riverside"), 
+         nbhd = replace(nbhd, nbhd == "Carnegie Lake", "Carnegie Lake Area"), 
+         nbhd = replace(nbhd, nbhd == "Town", "Township")) %>%     #fix area names
+  filter(! nbhd %in% c("Edgerstoune", "Northridge", "Rushbrook", "Russell Estates", 
+                       "The Preserve", "Governors Lane", "Princeton Borough", 
+                       "Preserve", "Queenston")) %>%  #delete areas with few houses
+  filter(! style %in% badStyles$style) %>%  #delete styles with at most 3 houses
+  mutate(style = replace(style, style == "Bi-level", "Bi-Level"), 
+         style = replace(style, style == "End Unit", "End-Unit"), 
+         style = replace(style, style == "Townhouse", "Townhome"))  #fix style names
+
+knitr::kable(list(house %>% 
+  group_by(style) %>%
+  summarise(meanSoldPrice = mean(soldPrice)) %>%
+  arrange(meanSoldPrice) %>%
+  head(10),
+  house %>% 
+  group_by(nbhd) %>%
+  summarise(meanSoldPrice = mean(soldPrice)) %>%
+  arrange(meanSoldPrice) %>%
+  head(10)), caption = "Top ten styles and neighborhoods with highest meanSoldPrice")
+```
+
 
 # Regression Analysis
 
