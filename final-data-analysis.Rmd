@@ -46,7 +46,7 @@ Possible predictors:
 
 Regression methods we will use: 
 - full linear model (lm)
-- subset selection (sub)
+- subset selection (forward, backward)
 - ridge (ridge)
 - lasso (lasso)
 - elastic net (ela)
@@ -114,8 +114,8 @@ performance <- function(df, modelName) {
     pf <- cbind(pf, modelName(df, i))
   }
   pf <- t(pf)
-  print(pf)
   print(c(mean(pf[,1]), mean(pf[,2])))
+  return(c(mean(pf[,1]), mean(pf[,2])))
 }
 ```
 
@@ -149,9 +149,9 @@ backwardModel <- function(df, testSet) {
   evalMetrics(backward, select(filter(df, id == testSet), -id), predBackward, target = "soldPrice")
 }
 
-performance(houseSplit, linearModel)
-performance(houseSplit, forwardModel)
-performance(houseSplit, backwardModel)
+#performance(houseSplit, linearModel)
+#performance(houseSplit, forwardModel)
+#performance(houseSplit, backwardModel)
 
 #R-Squared acceptable, but there is a large variance
 ```
@@ -215,12 +215,12 @@ elasticNetModel <- function(df, testSet) {
   evalResults(yTest, predictions, filter(houseSplit, id == testSet))
 }
 
-performance(houseSplit, ridgeModel)
+#performance(houseSplit, ridgeModel)
 #the ridge model has roughly the same RMSE, but slightly lower R2
-performance(houseSplit, lassoModel)
+#performance(houseSplit, lassoModel)
 #lasso has slightly lower RMSE, and a slightly higher R2 compared to ridge, but still lower than the linear model
-performance(dummySplitWithResponse, elasticNetModel)
-#elastic net has an even lower RMSE and a similar R2 compared with the previous two. Warning: this takes a longer time to run.
+#performance(dummySplitWithResponse, elasticNetModel)
+#elastic net is between ridge and lasso in terms of both R2 and variance
 ```
 
 
@@ -238,11 +238,18 @@ PCRModel <- function(df, testSet) {
   return(c(round(mean((predictions - yTest)^2)/mean((yTest - mean(yTest))^2),3), round(sqrt(sum((predictions - yTest)^2)/length(predictions)), 3)))
 }
 
-performance(dummySplitWithResponse, PCRModel)
+#performance(dummySplitWithResponse, PCRModel)
 #This one has a higher R squared, but as a trade-off it also has high variance
 ```
 
 
+```{r}
+#compare the models
+
+models <- data.frame(lm = performance(houseSplit, linearModel), forward = performance(houseSplit, forwardModel), backward = performance(houseSplit, backwardModel), ridge = performance(houseSplit, ridgeModel), lasso = performance(houseSplit, lassoModel), ela = performance(dummySplitWithResponse, elasticNetModel), pcr = performance(dummySplitWithResponse, PCRModel))
+
+models
+```
 
 
 
