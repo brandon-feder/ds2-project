@@ -1,17 +1,9 @@
----
-title: "R Notebook"
-output: html_notebook
-editor_options: 
-  markdown: 
-    wrap: 72
----
-
-```{r}
 library(tidyverse)
+
+#read dataset
 house <- read.csv("/Users/atticusw/Desktop/pton-market-data.csv")
 
 #Tidying up
-
 house <- house %>% 
   mutate(Price = strtoi(str_replace_all(str_sub(Sold.Price, 2, -4), ",", ""))) %>%
   rename(nbhd = Neighborhood, 
@@ -39,7 +31,6 @@ house <- house %>%
   mutate(marketDays = strtoi(marketDays))
 
 #some final tidying
-
 badStyles <- house %>% 
   group_by(style) %>%
   summarise(count = n()) %>%
@@ -70,17 +61,13 @@ house <- house %>%
          style = replace(style, style == "Townhouse", "Townhome"))  #fix style names
 
 house <- na.omit(house)
-```
 
-```{r}
 #normalize numerical data
-
 houseNorm <- house %>%
   mutate_at(c("bed", "fullBath", "halfBath", "age", "monthSold", 
               "daySold", "yearSold", "marketDays"), ~(scale(.) %>% as.vector))
 
 #divide data into 10 parts for cross-validation
-
 set.seed(42)
 houseSplit <- houseNorm
 houseSplit$id <- sample(0:9, size = nrow(houseSplit), replace = TRUE)
@@ -89,15 +76,14 @@ houseSplit$id <- sample(0:9, size = nrow(houseSplit), replace = TRUE)
 #  summarize(count = n())
 
 #define evaluation metrics: returns R-squared and RMS error. 
-
 evalMetrics <- function(model, df, predictions, target){
-    resids = df[,target] - predictions
-    resids2 = resids**2
-    N = length(predictions)
-    r2 = round(summary(model)$r.squared, 3)
-    adjR2 = round(summary(model)$adj.r.squared, 3)
-    rmse = round(sqrt(sum(resids2)/N), 3)
-    return(c(adjR2, rmse))
+  resids = df[,target] - predictions
+  resids2 = resids**2
+  N = length(predictions)
+  r2 = round(summary(model)$r.squared, 3)
+  adjR2 = round(summary(model)$adj.r.squared, 3)
+  rmse = round(sqrt(sum(resids2)/N), 3)
+  return(c(adjR2, rmse))
 }
 
 evalResults <- function(true, predicted, df) {
@@ -111,7 +97,6 @@ evalResults <- function(true, predicted, df) {
 #performance prints two numbers: 
 #the first one is the average R-squared across all 10 cross-validations
 #the second one is the average RMSE (standard deviation of the ten RMS)
-
 performance <- function(df, modelName) {
   pf <- data.frame(modelName(df, 0))
   for (i in 1:9) {
@@ -121,13 +106,10 @@ performance <- function(df, modelName) {
   print(c(mean(pf[,1]), mean(pf[,2])))
   return(c(mean(pf[,1]), mean(pf[,2])))
 }
-```
 
-```{r}
 #now we define the regression models!
 
 #linear regression model using all predictors
-
 linearModel <- function(df, testSet) {
   lr <- lm(soldPrice ~ ., data = select(filter(df, id != testSet), -id))
   summary(lr)
@@ -137,7 +119,6 @@ linearModel <- function(df, testSet) {
 
 #linear regression with a subset of the predictors
 #we use the step function for this
-
 forwardModel <- function(df, testSet) {
   fitNone <- lm(soldPrice ~ 1 , data = select(filter(df, id != testSet), -id))
   forward <- step(fitNone, direction = "forward", trace = 0, 
@@ -232,9 +213,7 @@ PCRModel <- function(df, testSet) {
 
 #performance(dummySplitWithResponse, PCRModel)
 #This one has a higher R squared, but as a trade-off it also has higher variance
-```
 
-```{r}
 #compare the models
 
 models <- data.frame(lm = performance(houseSplit, linearModel), 
@@ -245,4 +224,3 @@ models <- data.frame(lm = performance(houseSplit, linearModel),
                      ela = performance(dummySplitWithResponse, elasticNetModel), 
                      pcr = performance(dummySplitWithResponse, PCRModel))
 models
-```
