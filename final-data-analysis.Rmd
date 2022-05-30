@@ -64,6 +64,8 @@ badStyles <- house %>%
 
 house <- house %>%
   select(- lotSize) %>%     #too many NAs
+  select(- originalPrice) %>%
+  select(- lastPrice) %>%  #we omit these two predictors because they are too similar to the response variable 
   mutate(nbhd = replace(nbhd, nbhd == "Battelfield Area", "Battlefield Area"), nbhd = replace(nbhd, nbhd == "princeton Ridge", "Princeton Ridge"), nbhd = replace(nbhd, nbhd == "LIttlebrook", "Littlebrook"), nbhd = replace(nbhd, nbhd == "griggs Farm", "Griggs Farm"), nbhd = replace(nbhd, nbhd == "PrettyBrook Area", "Pretty Brook Area"), nbhd = replace(nbhd, nbhd == "Palmer Sq", "Palmer Square"), nbhd = replace(nbhd, nbhd == "Institute", "Institute Area"), nbhd = replace(nbhd, nbhd == "Rriverside", "Riverside"), nbhd = replace(nbhd, nbhd == "Rriverside", "Riverside"), nbhd = replace(nbhd, nbhd == "Carnegie Lake", "Carnegie Lake Area"), nbhd = replace(nbhd, nbhd == "Town", "Township")) %>%     #fix area names
   filter(! nbhd %in% c("Edgerstoune", "Northridge", "Rushbrook", "Russell Estates", "The Preserve", "Governors Lane", "Princeton Borough", "Preserve", "Queenston")) %>%  #delete areas with few houses
   filter(! style %in% badStyles$style) %>%  #delete styles with at most 3 houses
@@ -77,7 +79,7 @@ house <- house %>%
 #normalize numerical data
 
 houseNorm <- house %>%
-  mutate_at(c("bed", "fullBath", "halfBath", "age", "originalPrice", "lastPrice", "monthSold", "daySold", "yearSold", "marketDays"), ~(scale(.) %>% as.vector))
+  mutate_at(c("bed", "fullBath", "halfBath", "age", "monthSold", "daySold", "yearSold", "marketDays"), ~(scale(.) %>% as.vector))
 
 
 #divide data into 10 parts for cross-validation
@@ -94,14 +96,14 @@ houseSplit %>%
 ```{r}
 #define evaluation metrics: returns R-squared and RMS error
 
-eval_metrics <- function(model, df, predictions, target){
+evalMetrics <- function(model, df, predictions, target){
     resids = df[,target] - predictions
     resids2 = resids**2
     N = length(predictions)
     r2 = round(summary(model)$r.squared, 3)
-    adj_r2 = round(summary(model)$adj.r.squared, 3)
+    adjR2 = round(summary(model)$adj.r.squared, 3)
     rmse = round(sqrt(sum(resids2)/N), 3)
-    return(c(adj_r2, rmse))
+    return(c(adjR2, rmse))
 }
 
 #performance prints two numbers: the first one average R-squared, the second one average RMSE (standard deviation of the ten RMS)
@@ -124,22 +126,44 @@ performance <- function(df, modelName) {
 #linear regression model using all predictors
 
 linearModel <- function(df, testSet) {
-  lr <- lm(soldPrice ~ ., data = filter(df, id != testSet))
+  lr <- lm(soldPrice ~ ., data = select(filter(df, id != testSet), -id))
   summary(lr)
-  predictions <- predict(lr, newdata = filter(df, id == testSet))
-  eval_metrics(lr, filter(df, id == testSet), predictions, target = "soldPrice")
+  predictions <- predict(lr, newdata = select(filter(df, id == testSet), -id))
+  evalMetrics(lr, select(filter(df, id == testSet), -id), predictions, target = "soldPrice")
 }
 
 #linear regression with a subset of the predictors
 #we use the step function for this
 
-subsetModel <- function(df, testSet) {
-  
+forwardModel <- function(df, testSet) {
+  fitNone <- lm(soldPrice ~ 1 , data = select(filter(df, id != testSet), -id))
+  forward <- step(fitNone, direction = "forward", trace = 0, scope = formula(lm(soldPrice ~ ., data = select(filter(df, id != testSet), -id))))
+  predForward <- predict(forward, newdata = select(filter(df, id == testSet), -id))
+  evalMetrics(forward, select(filter(df, id == testSet), -id), predForward, target = "soldPrice")
 }
 
-
+backwardModel <- function(df, testSet) {
+  fitAll <- lm(soldPrice ~ ., data = select(filter(df, id != testSet), -id))
+  backward <- step(fitAll, direction = "backward", trace = 0)
+  predBackward <- predict(backward, newdata = select(filter(df, id == testSet), -id))
+  evalMetrics(backward, select(filter(df, id == testSet), -id), predBackward, target = "soldPrice")
+}
 
 performance(houseSplit, linearModel)
+performance(houseSplit, forwardModel)
+performance(houseSplit, backwardModel)
+```
+
+```{r}
+#we will use the glmnet package to build regularized regression models
+#these include ridge, lasso, and elastic net
+
+# install.packages("glmnet")
+# install.packages("caret")
+library(glmnet)
+library(caret)
+
+dummies <- dummyVars(soldPrice ~ ., data = houseSplit[,colnames(houseNorm)])
 ```
 
 
