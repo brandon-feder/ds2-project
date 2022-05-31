@@ -408,14 +408,31 @@ bestModel$beta
 ```
 
 
-
 # 3. Discussion and Limitations
+Though our model fits the data well, we were restricted by the curse of dimensionality: a required sample size will grow exponentially with the number of dimensions of the data. That is, we may not have had sufficient data to guarantee without a reasonable doubt that our model did not “detect” a coincidence in the data that would not be prevalent with more data.
 
-Assumptions are possibly not met, curse of dimensionality, did not incorporate census data
+In addition, we did not have time to incorporate US census data as we discussed in our proposal. From personal experience, we believe that this data would not particularly insightful because “like” individuals tend to congregate in neighborhoods which were already analyzed in the data. That being said, incorporating this data is something that would be useful for a more in-depth analysis.
 
-# Conclusion
+Finally, we should have adjusted house prices for inflation. The LASSO model shows that the year the house sold greatly affects the houses price. However, we are not sure if houses actually “age like wine,” or if they simply get more expensive inversely with the dollar’s relative worth.
 
+# 4. Conclusion
+Overall, our analysis was successful in that it answered the question: “What characteristics of a house in Princeton most greatly influences it’s price?” However, with more time we would have considered more characteristics of the house, attempted to use other models (maybe a neural network), and performed actual predictions based off our data.
 
-# Additional Work
+# 5. Aditional Work
 
-Introduce the other models we tried
+## Overview Of Regression Models Tested
+
+The first model is the standard **multi-linear regression** we studied in class for the ladder half of the year. In summary, this model assumes the data can be modeled by a line and attempts to minimize the residuls, $\varepsilon$,  according to some metric related to the space the data resodes in. Often, the metric is the sum of the squares of these residuals.
+
+**Stepwise regressions** (forward and backward) is a method of fitting regression models in which the choice of predictive variables an algorithm. In each step of this algorithm, a variable is considered for addition or subtraction from the set of explanatory variables based on some critera. The difference between the forward and backward regression is only the "direction" the model is constructed: In a foward regression, the variables that meet the given criteria are added while in a backward regression, the model initialy contains all the variables from which some are removed.
+
+**Ridge regression** provides a possible solution to the imprecision of least square regressions when linear regression models have some multicollinear independent variables. More formaly, while the coefficient estimator in a least-squares linear regression is given by $$\hat \beta = (X^TX)^{-1}X^Ty$$ the ridge regression is given by $$\hat \beta (X^TX + kI_p)^{-1}X^Ty$$
+where $I_p$ is the $p \times p$ multiplicative identiy and $k>0$ is a small.
+
+Once again, LASSO tried to enhance prediction accuracy and model interpretability by performing both variable selection and shrinkage (shrking coefficents of less-importnt predictors). While least squares multi-linear regressions minimize  $$\sum_{i=1}^n(y_i - \beta_0-\sum_{j=1}^p x_{i,j}\beta_j)^2,$$ LASSO minimizes $$\sum_{i=1}^n(y_i - \beta_0-\sum_{j=1}^p x_{i,j}\beta_j)^2 + \lambda_1 \sum_{j=1}^p |\beta_j|$$
+For all $\lambda_1\in \mathbb{R}$.
+
+**Elastic net** regression provides a compromize between ridge regressions and LASSO regressions by introducing a second $\lambda_2 \in \mathbb{R}$ such that the minimizing expression is  $$\sum_{i=1}^n(y_i - \beta_0-\sum_{j=1}^p x_{i,j}\beta_j)^2 + \lambda_1 \sum_{j=1}^p |\beta_j| + \lambda_2 \sum_{j=1}^p |\beta_j|^2$$
+The penalty terms in the model's parameter space looks something like [this](https://www.oreilly.com/library/view/machine-learning-with/9781787121515/assets/03902148-aac8-4968-a384-3ac2c2180e21.png).
+
+Finally, **principal component regression (PCR)** first performs a principal components analysis (PCA) on the predictors, and then regresses the response variable on those principal components. The principal components of a dataset are chosen inductively, with each new vector chosen in the direction orthogonal to all previous components that best fits the data. This is useful when the original predictors are linearly correlated with each other, because PCA reduces the number of predictors (simplifying the model) while eliminating those linear correlations that might negatively impact linear regression efficiency.
