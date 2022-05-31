@@ -116,7 +116,7 @@ The final model we adopted was Lasso (short for "Least Absolute Shrinkage and Se
 
 Lasso tries to enhance prediction accuracy and model interpretability by performing both variable selection (selecting which predictors to take into account) and shrinkage (shrinking coefficients of less important predictors). For usual linear models, we often try to minimize the sum of squares $\sum_{i=1}^N (y_i - \beta_0 - \sum_{j=1}^p x_{i,j}\beta_j)^2$. For Lasso, we impose a penalty for more complex models: what we minimize is the sum $\sum_{i=1}^N (y_i - \beta_0 - \sum_{j=1}^p x_{i,j}\beta_j)^2 + \lambda \sum_{j=1}^p |\beta_j|$. Here, $\lambda \ge 0$ is a parameter that we can tune to best fit our scenario.
 
-As usual, Lasso assumes that the response variable $y$ follows a linear relation with the predictor variables $y = X\beta + \epsilon$, where $\epsilon$ is Normally distributed with mean 0.
+As usual, Lasso assumes that the response variable $y$ follows a linear relation with the predictor variables $y = X\beta + \epsilon$, where $\epsilon$ is Normally distributed with mean 0. Also, since all predictor variables are assumed to be quantitative, we transformed categorical variables such as `nbhd` into dummy variables.
 
 ```{r, echo = FALSE, warning = FALSE, message = FALSE} 
 modelsPrint <- data.frame(R2 = c(0.5448, 0.5449, 0.5449, 0.517, 0.5227, 0.5192, 0.5996), RMSE = c(454579.0698, 454880.4127, 454880.4127, 455475.355, 452814.7395, 454296.0325, 507587.9640))
@@ -393,12 +393,25 @@ As we can see, the best lambda occurs roughly at $10^{3.8} \approx 6309$. Using 
 
 \newpage
 
-## Interprtation of coefficients
+## Interpretation of coefficients
+
+Inspecting the coefficients chosen by the Lasso model, we found that among the total 61 variables (most of them dummy variables), only 41 of them have nonzero coefficients. The largest coefficients (in terms of absolute value) are `yearSold` (412690), followed by `fullBath` (232332) and `halfBath` (57121). This means that on average, house prices increase each year by around 0.4 million dollars, and each additional full bathroom increases house prices by around 0.23 million dollars.
+
+```{r, warning = FALSE, echo = FALSE, results = "hide"}
+x = as.matrix(select(filter(dummySplit, id != 0), -id))
+xTest = as.matrix(select(filter(dummySplit, id == 0), -id))
+y = filter(houseSplit, id != 0)$soldPrice
+yTest = filter(houseSplit, id == 0)$soldPrice
+bestLambda <- 6309
+bestModel <- glmnet(x, y, alpha = 1, lambda = bestLambda)
+bestModel$beta
+```
 
 
-# Discussion and Limitations
 
-Assumptions possibly not met, curse of dimensionality, did not incorporate census data
+# 3. Discussion and Limitations
+
+Assumptions are possibly not met, curse of dimensionality, did not incorporate census data
 
 # Conclusion
 
